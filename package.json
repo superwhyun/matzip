@@ -1,0 +1,28 @@
+{
+  "name": "matzip-map",
+  "version": "1.0.0",
+  "description": "맛집 공유 사이트 - 행정구역 단계별 확대 지도",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "wrangler pages deploy dist"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "leaflet": "^1.9.4",
+    "react-leaflet": "^4.2.1",
+    "@fortawesome/react-fontawesome": "^0.2.0",
+    "@fortawesome/free-solid-svg-icons": "^6.4.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.4",
+    "vite": "^4.4.9",
+    "@cloudflare/workers-types": "^4.20230704.0",
+    "wrangler": "^3.10.1"
+  },
+  "author": "",
+  "license": "ISC"
+}

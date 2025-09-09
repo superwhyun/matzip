@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "대전광역시",
+        "level": 1
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [
+            [
+              [127.252906, 36.139136], [127.252906, 36.520447], [127.581406, 36.520447],
+              [127.581406, 36.139136], [127.252906, 36.139136]
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

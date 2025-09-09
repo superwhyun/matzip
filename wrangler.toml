@@ -1,0 +1,6 @@
+name = "matzip-map-demo"
+pages_build_output_dir = "dist"
+compatibility_date = "2023-10-01"
+
+[build]
+command = "npm run build"
