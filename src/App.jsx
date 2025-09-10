@@ -297,14 +297,15 @@ function App() {
       const searchResult = await searchPlaceAPI(placeName, searchLat, searchLng);
       
       if (searchResult) {
-        // 검색 결과로 주소와 위치 자동 업데이트
+        // 검색 결과로 이름, 주소, 위치 자동 업데이트
         setNewRestaurant(prev => ({
           ...prev,
+          name: searchResult.placeName,
           address: searchResult.address
         }));
         setSelectedPosition([searchResult.lat, searchResult.lng]);
         
-        alert(`검색 완료!\n주소: ${searchResult.address}\n위치가 자동으로 업데이트되었습니다.`);
+        alert(`검색 완료!\n업체명: ${searchResult.placeName}\n주소: ${searchResult.address}\n위치가 자동으로 업데이트되었습니다.`);
       } else {
         alert('검색 결과가 없습니다. 다른 키워드로 시도해보세요.');
       }
@@ -329,15 +330,16 @@ function App() {
       const searchResult = await searchPlaceAPI(placeName, searchLat, searchLng);
       
       if (searchResult) {
-        // 검색 결과로 주소와 위치 자동 업데이트
+        // 검색 결과로 이름, 주소, 위치 자동 업데이트
         setEditingRestaurant(prev => ({
           ...prev,
+          name: searchResult.placeName,
           address: searchResult.address,
           lat: searchResult.lat,
           lng: searchResult.lng
         }));
         
-        alert(`검색 완료!\n주소: ${searchResult.address}\n위치가 자동으로 업데이트되었습니다.`);
+        alert(`검색 완료!\n업체명: ${searchResult.placeName}\n주소: ${searchResult.address}\n위치가 자동으로 업데이트되었습니다.`);
       } else {
         alert('검색 결과가 없습니다. 다른 키워드로 시도해보세요.');
       }
@@ -518,11 +520,24 @@ function App() {
                 </Tooltip>
               )}
               
-              <Popup>
+              <Popup closeButton={false}>
                 <div className="restaurant-card">
-                  <h4>{restaurant.name}</h4>
-                  <p>⭐ {restaurant.rating}/5.0</p>
-                  <p>📍 {restaurant.address}</p>
+                  <button 
+                    className="close-popup-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // 부모 팝업 요소 찾아서 제거
+                      const popup = e.target.closest('.leaflet-popup');
+                      if (popup && popup.parentElement) {
+                        popup.parentElement.removeChild(popup);
+                      }
+                    }}
+                  >
+                    ✕
+                  </button>
+                  <div className="restaurant-name">{restaurant.name}</div>
+                  <div className="restaurant-rating">⭐ {restaurant.rating}/5.0</div>
+                  <div className="restaurant-address">📍 {restaurant.address}</div>
                   {restaurant.review && (
                     <div className="restaurant-review">
                       <p><strong>💭 평가:</strong></p>
@@ -534,13 +549,13 @@ function App() {
                       className="edit-popup-btn"
                       onClick={() => handleStartEditRestaurant(restaurant)}
                     >
-                      ✏️ 수정
+                      ✏️<span>수정</span>
                     </button>
                     <button 
                       className="delete-popup-btn"
                       onClick={() => handleDeleteRestaurant(restaurant.id)}
                     >
-                      🗑️ 삭제
+                      🗑️<span>삭제</span>
                     </button>
                   </div>
                 </div>
