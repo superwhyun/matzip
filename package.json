@@ -10,18 +10,19 @@
     "deploy": "wrangler pages deploy dist"
   },
   "dependencies": {
+    "@cloudflare/kv-asset-handler": "^0.4.0",
+    "@fortawesome/free-solid-svg-icons": "^6.4.2",
+    "@fortawesome/react-fontawesome": "^0.2.0",
+    "leaflet": "^1.9.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "leaflet": "^1.9.4",
-    "react-leaflet": "^4.2.1",
-    "@fortawesome/react-fontawesome": "^0.2.0",
-    "@fortawesome/free-solid-svg-icons": "^6.4.2"
+    "react-leaflet": "^4.2.1"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20230704.0",
     "@vitejs/plugin-react": "^4.0.4",
     "vite": "^4.4.9",
-    "@cloudflare/workers-types": "^4.20230704.0",
-    "wrangler": "^3.10.1"
+    "wrangler": "^4.35.0"
   },
   "author": "",
   "license": "ISC"

@@ -17,27 +17,45 @@ try {
   console.log('Default marker icons loaded');
 }
 
-// 샘플 맛집 데이터 - 세종시 지역
-const sampleRestaurants = [
-  {
-    id: 1,
-    name: "하여금 동국",
-    rating: 4.5,
-    address: "세종시 아름동",
-    lat: 36.5153,
-    lng: 127.2429,
-    review: "분위기 좋고 음식도 맛있어요. 특히 파스타가 일품입니다."
+// API 기본 URL - 개발/프로덕션 자동 감지
+const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:8787' : '';
+
+// API 함수들
+const api = {
+  // 맛집 목록 조회
+  async getRestaurants() {
+    const response = await fetch(`${API_BASE_URL}/api/restaurants`);
+    return response.json();
   },
-  {
-    id: 2,
-    name: "빌즈 세종",
-    rating: 4.2,
-    address: "세종시 도담동",
-    lat: 36.5179,
-    lng: 127.2585,
-    review: "브런치 맛집으로 유명해요. 팬케이크 추천합니다!"
+  
+  // 맛집 등록
+  async createRestaurant(data) {
+    const response = await fetch(`${API_BASE_URL}/api/restaurants`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return response.json();
+  },
+  
+  // 맛집 수정
+  async updateRestaurant(id, data) {
+    const response = await fetch(`${API_BASE_URL}/api/restaurants/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return response.json();
+  },
+  
+  // 맛집 삭제
+  async deleteRestaurant(id) {
+    const response = await fetch(`${API_BASE_URL}/api/restaurants/${id}`, {
+      method: 'DELETE'
+    });
+    return response.json();
   }
-];
+};
 
 // 지도 클릭 이벤트 처리 컴포넌트
 function MapClickHandler({ isAddingMode, onMapClick }) {
@@ -53,8 +71,8 @@ function MapClickHandler({ isAddingMode, onMapClick }) {
 
 function App() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [restaurants, setRestaurants] = useState(sampleRestaurants);
-  const [filteredRestaurants, setFilteredRestaurants] = useState(sampleRestaurants);
+  const [restaurants, setRestaurants] = useState([]);
+  const [filteredRestaurants, setFilteredRestaurants] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newRestaurant, setNewRestaurant] = useState({
     name: '',
@@ -73,14 +91,30 @@ function App() {
   const mapCenter = [36.4795, 127.2891];
 
 
+  // 컴포넌트 마운트시 데이터 로드
   useEffect(() => {
-    // 검색어로 맛집 필터링
+    loadRestaurants();
+  }, []);
+
+  // 검색어 필터링
+  useEffect(() => {
     const filtered = restaurants.filter(restaurant =>
       restaurant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       restaurant.address.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredRestaurants(filtered);
   }, [searchTerm, restaurants]);
+
+  // API 데이터 로드
+  const loadRestaurants = async () => {
+    try {
+      const data = await api.getRestaurants();
+      setRestaurants(data);
+      setFilteredRestaurants(data);
+    } catch (error) {
+      console.error('데이터 로드 실패:', error);
+    }
+  };
 
   // 등록 모드 상태 변경 시 커서 및 body 스타일 변경
   useEffect(() => {
@@ -181,29 +215,42 @@ function App() {
   };
 
   // 맛집 등록 핸들러
-  const handleAddRestaurant = () => {
+  const handleAddRestaurant = async () => {
     if (newRestaurant.name && selectedPosition) {
-      const restaurant = {
-        id: Date.now(),
-        name: newRestaurant.name,
-        address: newRestaurant.address || '주소 미정',
-        rating: newRestaurant.rating,
-        review: newRestaurant.review || '',
-        lat: selectedPosition[0],
-        lng: selectedPosition[1]
-      };
-      setRestaurants([...restaurants, restaurant]);
-      setNewRestaurant({ name: '', address: '', rating: 3.0, review: '' });
-      setSelectedPosition(null);
-      setShowAddForm(false);
-      setIsAddingMode(false);
+      try {
+        const restaurantData = {
+          name: newRestaurant.name,
+          address: newRestaurant.address || '주소 미정',
+          rating: newRestaurant.rating,
+          review: newRestaurant.review || '',
+          lat: selectedPosition[0],
+          lng: selectedPosition[1]
+        };
+        
+        await api.createRestaurant(restaurantData);
+        await loadRestaurants(); // 데이터 다시 로드
+        
+        setNewRestaurant({ name: '', address: '', rating: 3.0, review: '' });
+        setSelectedPosition(null);
+        setShowAddForm(false);
+        setIsAddingMode(false);
+      } catch (error) {
+        console.error('맛집 등록 실패:', error);
+        alert('맛집 등록에 실패했습니다.');
+      }
     }
   };
 
   // 맛집 삭제 핸들러
-  const handleDeleteRestaurant = (id) => {
+  const handleDeleteRestaurant = async (id) => {
     if (confirm('정말로 이 맛집을 삭제하시겠습니까?')) {
-      setRestaurants(restaurants.filter(restaurant => restaurant.id !== id));
+      try {
+        await api.deleteRestaurant(id);
+        await loadRestaurants(); // 데이터 다시 로드
+      } catch (error) {
+        console.error('맛집 삭제 실패:', error);
+        alert('맛집 삭제에 실패했습니다.');
+      }
     }
   };
 
@@ -214,18 +261,28 @@ function App() {
   };
 
   // 맛집 수정 완료 핸들러
-  const handleEditRestaurant = () => {
+  const handleEditRestaurant = async () => {
     if (editingRestaurant && editingRestaurant.name) {
-      setRestaurants(restaurants.map(restaurant => 
-        restaurant.id === editingRestaurant.id ? editingRestaurant : restaurant
-      ));
-      setEditingRestaurant(null);
-      setShowEditForm(false);
+      try {
+        await api.updateRestaurant(editingRestaurant.id, {
+          name: editingRestaurant.name,
+          address: editingRestaurant.address,
+          rating: editingRestaurant.rating,
+          review: editingRestaurant.review,
+          lat: editingRestaurant.lat,
+          lng: editingRestaurant.lng
+        });
+        await loadRestaurants(); // 데이터 다시 로드
+        setEditingRestaurant(null);
+        setShowEditForm(false);
+      } catch (error) {
+        console.error('맛집 수정 실패:', error);
+        alert('맛집 수정에 실패했습니다.');
+      }
     }
   };
 
-  // 카카오 지도 API 키 (환경변수에서 읽어오기)
-  const KAKAO_API_KEY = import.meta.env.VITE_KAKAO_API_KEY;
+  // 카카오 API는 이제 Worker 프록시를 통해 호출됩니다
 
   // 장소 검색 함수 (새 맛집 등록용)
   const handleSearchPlace = async (placeName) => {
@@ -292,61 +349,67 @@ function App() {
     }
   };
 
-  // 카카오 장소 검색 API 호출 함수
+  // 카카오 장소 검색 API 호출 함수 (Worker 프록시 사용)
   const searchPlaceAPI = async (keyword, lat, lng) => {
     try {
-      // API 키가 설정되어 있지 않으면 데모 모드로 작동
-      if (!KAKAO_API_KEY || KAKAO_API_KEY === 'YOUR_KAKAO_REST_API_KEY_HERE') {
-        console.warn('카카오 API 키가 설정되지 않았습니다. 데모 모드로 작동합니다.');
+      // Worker API 프록시를 통해 카카오 API 호출
+      const apiUrl = API_BASE_URL + '/api/search-place';
+      const searchQuery = `${keyword} 세종시 맛집`; // 검색어에 지역 추가
         
-        // 데모용: 가상의 검색 결과 반환
-        if (Math.random() > 0.3) { // 70% 성공률
-          return {
-            address: `세종시 ${keyword} 근처 (데모)`,
-            lat: lat + (Math.random() - 0.5) * 0.01,
-            lng: lng + (Math.random() - 0.5) * 0.01
-          };
-        }
-        return null;
-      }
-
-      // 실제 카카오 API 호출 (프록시 사용)
-      const apiUrl = import.meta.env.DEV 
-        ? `/api/kakao/v2/local/search/keyword.json` // 개발 환경: 프록시 사용
-        : `https://dapi.kakao.com/v2/local/search/keyword.json`; // 프로덕션: 직접 호출
-        
-      const response = await fetch(
-        `${apiUrl}?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=5000&category_group_code=FD6`,
-        {
-          headers: {
-            'Authorization': `KakaoAK ${KAKAO_API_KEY}`
-          }
-        }
-      );
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ query: searchQuery })
+      });
       
       if (!response.ok) {
-        throw new Error(`API 호출 실패: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `API 호출 실패: ${response.status}`);
       }
       
       const data = await response.json();
       
+      // 카카오 API 응답 처리
       if (data.documents && data.documents.length > 0) {
-        const place = data.documents[0]; // 가장 가까운 결과 선택
+        // 현재 위치(lat, lng)에서 가장 가까운 결과 선택
+        const calculateDistance = (lat1, lng1, lat2, lng2) => {
+          const R = 6371; // 지구 반지름 (km)
+          const dLat = (lat2 - lat1) * Math.PI / 180;
+          const dLng = (lng2 - lng1) * Math.PI / 180;
+          const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                    Math.sin(dLng/2) * Math.sin(dLng/2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          return R * c;
+        };
+
+        let closestPlace = data.documents[0];
+        let minDistance = calculateDistance(lat, lng, parseFloat(data.documents[0].y), parseFloat(data.documents[0].x));
+
+        for (const place of data.documents) {
+          const distance = calculateDistance(lat, lng, parseFloat(place.y), parseFloat(place.x));
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestPlace = place;
+          }
+        }
+        
+        const selectedPlace = closestPlace;
+        
         return {
-          address: place.road_address_name || place.address_name,
-          lat: parseFloat(place.y),
-          lng: parseFloat(place.x),
-          placeName: place.place_name,
-          phone: place.phone
+          address: selectedPlace.road_address_name || selectedPlace.address_name,
+          lat: parseFloat(selectedPlace.y),
+          lng: parseFloat(selectedPlace.x),
+          placeName: selectedPlace.place_name,
+          phone: selectedPlace.phone || ''
         };
       }
       
       return null;
     } catch (error) {
-      // CORS 오류인 경우 사용자에게 안내
-      if (error.message.includes('CORS')) {
-        console.error('CORS 오류: 개발 서버에서는 CORS 프록시 설정이 필요할 수 있습니다.');
-      }
+      console.error('카카오 장소 검색 오류:', error);
       throw error;
     }
   };
