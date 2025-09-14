@@ -418,71 +418,32 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* 사용자 상태 표시 */}
-      <div style={{
-        position: 'fixed',
-        top: '10px',
-        right: '10px',
-        background: isAddingMode ? '#4CAF50' : '#2196F3',
-        color: 'white',
-        padding: '8px 12px',
-        borderRadius: '4px',
-        zIndex: 1000,
-        fontWeight: 'bold'
-      }}>
-        {isAddingMode ? '🎯 맛집 등록 모드' : '🔍 검색 모드'}
-      </div>
-
-      {/* 메인 헤더 */}
-      <div className="header">
-        <h1>세종시 맛집 공유 지도</h1>
-        <div className="search-bar">
-          <input
-            type="text"
-            placeholder="맛집 검색..."
-            className="search-input"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <button
-            className={`add-restaurant-btn ${isAddingMode ? 'active' : ''}`}
-            onClick={() => setIsAddingMode(!isAddingMode)}
-          >
-            {isAddingMode ? '등록 취소' : '맛집 등록'}
-          </button>
-        </div>
-
-        {/* 평점 표시 토글 */}
-        <div className="rating-toggle">
-          <button
-            className={`rating-toggle-btn ${showRatingsOnMap ? 'active' : ''}`}
-            onClick={() => setShowRatingsOnMap(!showRatingsOnMap)}
-            title={showRatingsOnMap ? '지도에서 평점 숨기기' : '지도에 평점 표시하기'}
-          >
-            ⭐ {showRatingsOnMap ? '평점 표시 중' : '평점 표시'}
-          </button>
-        </div>
-
-        {/* 상태 설명 */}
-        <div style={{
-          marginTop: '10px',
-          fontSize: '14px',
-          color: isAddingMode ? '#4CAF50' : '#666',
-          fontWeight: 'bold'
-        }}>
-          {isAddingMode ? (
-            <div>
-              <span>🎯 십자선 커서가 표시됩니다.</span><br/>
-              <span>지도에서 맛집 위치를 클릭하세요!</span>
-            </div>
-          ) : (
-            <span>▷ 일반 모드: 맛집 검색 및 확인</span>
-          )}
-        </div>
+      {/* 상단 고정 컨트롤 바 */}
+      <div className="sticky-controls">
+        <input
+          type="text"
+          placeholder="맛집 검색..."
+          className="search-input"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        <button
+          className={`add-restaurant-btn ${isAddingMode ? 'active' : ''}`}
+          onClick={() => setIsAddingMode(!isAddingMode)}
+        >
+          {isAddingMode ? '등록 취소' : '맛집 등록'}
+        </button>
+        <button
+          className={`rating-toggle-btn ${showRatingsOnMap ? 'active' : ''}`}
+          onClick={() => setShowRatingsOnMap(!showRatingsOnMap)}
+          title={showRatingsOnMap ? '지도에서 평점 숨기기' : '지도에 평점 표시하기'}
+        >
+          ⭐ {showRatingsOnMap ? '평점 표시 중' : '평점 표시'}
+        </button>
       </div>
 
       {/* 지도 컨테이너 */}
-      <div className={`map-container ${isAddingMode ? 'adding-mode' : ''}`}>
+      <div className={`full-map-container ${isAddingMode ? 'adding-mode' : ''}`}>
         <MapContainer
           center={mapCenter}
           zoom={13}
@@ -724,24 +685,6 @@ function App() {
         </div>
       )}
 
-      {/* 하단 안내 */}
-      <div style={{
-        marginTop: '20px',
-        padding: '15px',
-        backgroundColor: '#f8f9fa',
-        borderRadius: '8px',
-        textAlign: 'center'
-      }}>
-        <h4>🍽️ 사용 방법</h4>
-        <ol style={{ textAlign: 'left', marginTop: '10px' }}>
-          <li><strong>검색:</strong> 입력창에 맛집명이나 주소 검색</li>
-          <li><strong>등록:</strong> "맛집 등록" 버튼 → 커서 변경 → 지도 클릭 → 정보 입력</li>
-          <li><strong>확인:</strong> 커서가 십자선으로 바뀌면 등록 모드 활성화</li>
-        </ol>
-        <p style={{ marginTop: '10px', color: '#28a745', fontWeight: 'bold' }}>
-          현재 세종시 중심 20km 범위 내에서 표시됨
-        </p>
-      </div>
     </div>
   );
 }
