@@ -17,6 +17,24 @@ try {
   console.log('Default marker icons loaded');
 }
 
+// 커스텀 마커 아이콘 생성
+const createCustomIcon = (color = 'red') => {
+  return new L.Icon({
+    iconUrl: `https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png`,
+    iconRetinaUrl: `https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png`,
+    shadowUrl: `https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png`,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
+    className: `custom-marker-${color}`
+  });
+};
+
+// 마커 아이콘들
+const myRestaurantIcon = createCustomIcon('red');    // 내 맛집
+const otherRestaurantIcon = createCustomIcon('blue'); // 다른 사용자 맛집
+
 // API 기본 URL - 개발/프로덕션 자동 감지
 const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:8787' : '';
 
@@ -241,6 +259,32 @@ function App() {
     setViewingUser(null);
     setViewMode('all');
     loadRestaurants('all', null);
+  };
+
+  // 내 맛집 등록하기 (기존 맛집 정보로 모달 열기)
+  const handleAddToMyRestaurants = (restaurant) => {
+    if (!currentUser) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+    
+    // 기존 맛집 정보로 폼 미리 채우기
+    setNewRestaurant({
+      name: restaurant.name,
+      address: restaurant.address,
+      rating: 3.0, // 기본 평점
+      review: '',  // 빈 리뷰
+      kakaoPlaceId: restaurant.kakao_place_id
+    });
+    
+    // 위치 설정
+    setSelectedPosition([restaurant.lat, restaurant.lng]);
+    
+    // 등록 모달 열기
+    setShowAddForm(true);
+    
+    // 사이드 패널 닫기
+    setSelectedRestaurant(null);
   };
 
   // 사용자 인증 함수들
@@ -715,16 +759,22 @@ function App() {
           <MapClickHandler isAddingMode={isAddingMode} onMapClick={handleMapClick} />
 
           {/* 마커 표시 */}
-          {filteredRestaurants.map(restaurant => (
-            <Marker 
-              key={restaurant.id} 
-              position={[restaurant.lat, restaurant.lng]}
-              eventHandlers={{
-                click: () => {
-                  setSelectedRestaurant(restaurant);
-                }
-              }}
-            >
+          {filteredRestaurants.map(restaurant => {
+            // 내가 등록한 맛집인지 확인
+            const hasMyReview = currentUser && restaurant.reviews && 
+              restaurant.reviews.some(review => review.user_id === currentUser.id);
+            
+            return (
+              <Marker 
+                key={restaurant.id} 
+                position={[restaurant.lat, restaurant.lng]}
+                icon={hasMyReview ? myRestaurantIcon : otherRestaurantIcon}
+                eventHandlers={{
+                  click: () => {
+                    setSelectedRestaurant(restaurant);
+                  }
+                }}
+              >
               {/* 평점 표시 툴팁 */}
               {showRatingsOnMap && (
                 <Tooltip
@@ -740,8 +790,9 @@ function App() {
                   </span>
                 </Tooltip>
               )}
-            </Marker>
-          ))}
+              </Marker>
+            );
+          })}
 
           {/* 축척 표시 */}
           <ScaleControl position="bottomright" imperial={false} />
@@ -762,7 +813,7 @@ function App() {
           </div>
           
           <div className="side-panel-content">
-            {viewMode === 'aggregated' && selectedRestaurant.reviews ? (
+            {selectedRestaurant.reviews && selectedRestaurant.reviews.length > 0 ? (
               // 집계 모드: 여러 리뷰 표시
               <div className="aggregated-reviews">
                 <div className="restaurant-summary">
@@ -776,27 +827,23 @@ function App() {
                 <div className="reviews-list">
                   <h4>💭 리뷰 목록</h4>
                   {selectedRestaurant.reviews.map((review, index) => (
-                    <div key={index} className="review-item">
-                      <div className="review-header">
-                        <span className="review-author">{review.nickname || '익명'}</span>
-                        <span className="review-rating">⭐ {review.rating}</span>
-                        <span className="review-date">
-                          {new Date(review.created_at).toLocaleDateString()}
+                    <div key={index} className="review-item-oneline">
+                      <div className="review-content-oneline">
+                        <span className="review-text">
+                          "{review.review || '평점만 등록'}", {review.nickname || '익명'} ({new Date(review.created_at).toLocaleDateString()})
                         </span>
+                        <span className="review-rating">⭐ {review.rating}</span>
                       </div>
-                      {review.review && (
-                        <div className="review-text">{review.review}</div>
-                      )}
                       {currentUser && currentUser.id === review.user_id && (
-                        <div className="review-actions">
+                        <div className="review-actions-inline">
                           <button 
-                            className="edit-btn"
+                            className="edit-btn-small"
                             onClick={() => handleStartEditRestaurant({...review, ...selectedRestaurant})}
                           >
                             수정
                           </button>
                           <button 
-                            className="delete-btn"
+                            className="delete-btn-small"
                             onClick={() => handleDeleteRestaurant(review.id, review.user_id)}
                           >
                             삭제
@@ -806,6 +853,19 @@ function App() {
                     </div>
                   ))}
                 </div>
+                
+                {/* 내 맛집 등록하기 버튼 */}
+                {currentUser && (!selectedRestaurant.reviews || 
+                  !selectedRestaurant.reviews.some(review => review.user_id === currentUser.id)) && (
+                  <div className="add-my-restaurant-section">
+                    <button 
+                      className="add-my-restaurant-btn"
+                      onClick={() => handleAddToMyRestaurants(selectedRestaurant)}
+                    >
+                      🍽️ 내 맛집으로 등록하기
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               // 일반 모드: 단일 리뷰 표시

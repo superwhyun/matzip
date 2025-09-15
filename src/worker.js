@@ -96,16 +96,60 @@ export default {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
         } else {
-          // 전체 맛집 목록 (기본)
+          // 전체 맛집 목록 (집계된 형태로 반환)
           const stmt = env.DB.prepare(`
-            SELECT r.*, u.nickname 
-            FROM restaurants r 
-            LEFT JOIN users u ON r.user_id = u.id 
-            ORDER BY r.created_at DESC
+            SELECT 
+              COALESCE(r.kakao_place_id, 'no_id_' || r.id) as group_key,
+              r.kakao_place_id,
+              r.name,
+              r.address,
+              r.lat,
+              r.lng,
+              AVG(r.rating) as avg_rating,
+              COUNT(*) as review_count,
+              MAX(r.updated_at) as latest_update
+            FROM restaurants r
+            LEFT JOIN users u ON r.user_id = u.id
+            GROUP BY COALESCE(r.kakao_place_id, 'no_id_' || r.id), r.name, r.address, r.lat, r.lng
+            ORDER BY latest_update DESC
           `);
-          const { results } = await stmt.all();
+          const { results: groupedResults } = await stmt.all();
           
-          return new Response(JSON.stringify(results), {
+          // 각 그룹의 상세 리뷰 정보 가져오기
+          const processedResults = [];
+          for (const group of groupedResults) {
+            let reviewsStmt;
+            let reviewsParams;
+            
+            if (group.kakao_place_id) {
+              reviewsStmt = env.DB.prepare(`
+                SELECT r.*, u.nickname 
+                FROM restaurants r 
+                LEFT JOIN users u ON r.user_id = u.id 
+                WHERE r.kakao_place_id = ?
+                ORDER BY r.created_at DESC
+              `);
+              reviewsParams = [group.kakao_place_id];
+            } else {
+              reviewsStmt = env.DB.prepare(`
+                SELECT r.*, u.nickname 
+                FROM restaurants r 
+                LEFT JOIN users u ON r.user_id = u.id 
+                WHERE r.kakao_place_id IS NULL AND r.name = ? AND r.address = ? AND r.lat = ? AND r.lng = ?
+                ORDER BY r.created_at DESC
+              `);
+              reviewsParams = [group.name, group.address, group.lat, group.lng];
+            }
+            
+            const { results: reviews } = await reviewsStmt.bind(...reviewsParams).all();
+            
+            processedResults.push({
+              ...group,
+              reviews: reviews
+            });
+          }
+          
+          return new Response(JSON.stringify(processedResults), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
         }
@@ -449,8 +493,8 @@ export default {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>맛집 지도 - Matzip Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script type="module" crossorigin src="/assets/index-55d61169.js"></script>
-    <link rel="stylesheet" href="/assets/index-de213a9b.css">
+    <script type="module" crossorigin src="/assets/index-d5a69d5d.js"></script>
+    <link rel="stylesheet" href="/assets/index-91442b02.css">
   </head>
   <body>
     <div id="root"></div>
@@ -481,8 +525,8 @@ export default {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>맛집 지도 - Matzip Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script type="module" crossorigin src="/assets/index-55d61169.js"></script>
-    <link rel="stylesheet" href="/assets/index-de213a9b.css">
+    <script type="module" crossorigin src="/assets/index-d5a69d5d.js"></script>
+    <link rel="stylesheet" href="/assets/index-91442b02.css">
   </head>
   <body>
     <div id="root"></div>
