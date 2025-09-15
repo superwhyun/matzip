@@ -31,4 +31,6 @@ dist-ssr
 .env.production.local
 
 # Wrangler environment variables
-.dev.vars
+.dev.vars.wrangler/tmp/
+.wrangler/*
+.wrangler*

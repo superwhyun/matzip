@@ -23,8 +23,10 @@ const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:8787' : '';
 // API 함수들
 const api = {
   // 맛집 목록 조회
-  async getRestaurants() {
-    const response = await fetch(`${API_BASE_URL}/api/restaurants`);
+  async getRestaurants(params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    const url = `${API_BASE_URL}/api/restaurants${queryString ? '?' + queryString : ''}`;
+    const response = await fetch(url);
     return response.json();
   },
   
@@ -49,10 +51,36 @@ const api = {
   },
   
   // 맛집 삭제
-  async deleteRestaurant(id) {
-    const response = await fetch(`${API_BASE_URL}/api/restaurants/${id}`, {
+  async deleteRestaurant(id, userId) {
+    const response = await fetch(`${API_BASE_URL}/api/restaurants/${id}/${userId}`, {
       method: 'DELETE'
     });
+    return response.json();
+  },
+
+  // 사용자 등록
+  async registerUser(nickname, password) {
+    const response = await fetch(`${API_BASE_URL}/api/users/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname, password })
+    });
+    return response.json();
+  },
+
+  // 사용자 로그인
+  async loginUser(nickname, password) {
+    const response = await fetch(`${API_BASE_URL}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname, password })
+    });
+    return response.json();
+  },
+
+  // 사용자 정보 조회
+  async getUserInfo(nickname) {
+    const response = await fetch(`${API_BASE_URL}/api/users/${nickname}`);
     return response.json();
   }
 };
@@ -86,14 +114,63 @@ function App() {
   const [showEditForm, setShowEditForm] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [showRatingsOnMap, setShowRatingsOnMap] = useState(false);
+  
+  // 새로 추가되는 상태들
+  const [currentUser, setCurrentUser] = useState(null); // 현재 로그인한 사용자
+  const [showLoginForm, setShowLoginForm] = useState(false);
+  const [viewingUser, setViewingUser] = useState(null); // 현재 보고 있는 사용자 페이지
+  const [viewMode, setViewMode] = useState('all'); // 'all', 'user', 'aggregated'
+  const [selectedRestaurant, setSelectedRestaurant] = useState(null); // 사이드 패널용
 
   // 세종시 중심 좌표와 20km 범위 제한
   const mapCenter = [36.4795, 127.2891];
 
 
-  // 컴포넌트 마운트시 데이터 로드
+  // 컴포넌트 마운트시 URL 파싱 및 데이터 로드
   useEffect(() => {
-    loadRestaurants();
+    // URL 파싱
+    const path = window.location.pathname;
+    const userMatch = path.match(/^\/u\/([^\/]+)$/);
+    
+    // 로컬스토리지에서 사용자 정보 복원
+    const savedUser = localStorage.getItem('currentUser');
+    if (savedUser) {
+      setCurrentUser(JSON.parse(savedUser));
+    }
+    
+    if (userMatch) {
+      const nickname = userMatch[1];
+      setViewingUser(nickname);
+      setViewMode('user');
+      loadUserInfo(nickname);
+      loadRestaurants('user', nickname);
+    } else {
+      setViewMode('all'); // 기본은 전체 모드 (집계 아닌 일반)
+      loadRestaurants('all', null);
+    }
+  }, []);
+
+  // URL 변경 감지
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      const userMatch = path.match(/^\/u\/([^\/]+)$/);
+      
+      if (userMatch) {
+        const nickname = userMatch[1];
+        setViewingUser(nickname);
+        setViewMode('user');
+        loadUserInfo(nickname);
+        loadRestaurants('user', nickname);
+      } else {
+        setViewingUser(null);
+        setViewMode('all');
+        loadRestaurants('all', null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   // 검색어 필터링
@@ -106,14 +183,105 @@ function App() {
   }, [searchTerm, restaurants]);
 
   // API 데이터 로드
-  const loadRestaurants = async () => {
+  const loadRestaurants = async (mode = null, user = null) => {
     try {
-      const data = await api.getRestaurants();
+      const currentMode = mode || viewMode;
+      const currentUser = user || viewingUser;
+      
+      let data;
+      if (currentMode === 'user' && currentUser) {
+        // 특정 사용자의 맛집 조회
+        const userInfo = await api.getUserInfo(currentUser);
+        if (userInfo.success) {
+          data = await api.getRestaurants({ userId: userInfo.user.id });
+        } else {
+          data = [];
+        }
+      } else if (currentMode === 'aggregated') {
+        // 집계된 맛집 목록 조회
+        data = await api.getRestaurants({ aggregated: 'true' });
+      } else {
+        // 전체 맛집 목록 조회 (기본)
+        data = await api.getRestaurants();
+      }
+      
       setRestaurants(data);
       setFilteredRestaurants(data);
     } catch (error) {
       console.error('데이터 로드 실패:', error);
     }
+  };
+
+  // 사용자 정보 로드
+  const loadUserInfo = async (nickname) => {
+    try {
+      const result = await api.getUserInfo(nickname);
+      if (!result.success) {
+        // 사용자가 없으면 메인 페이지로 리다이렉트
+        window.history.pushState({}, '', '/');
+        setViewingUser(null);
+        setViewMode('aggregated');
+      }
+    } catch (error) {
+      console.error('사용자 정보 로드 실패:', error);
+    }
+  };
+
+  // 페이지 이동 함수
+  const navigateToUser = (nickname) => {
+    window.history.pushState({}, '', `/u/${nickname}`);
+    setViewingUser(nickname);
+    setViewMode('user');
+    loadUserInfo(nickname);
+    loadRestaurants('user', nickname);
+  };
+
+  const navigateToHome = () => {
+    window.history.pushState({}, '', '/');
+    setViewingUser(null);
+    setViewMode('all');
+    loadRestaurants('all', null);
+  };
+
+  // 사용자 인증 함수들
+  const handleLogin = async (nickname, password) => {
+    try {
+      const result = await api.loginUser(nickname, password);
+      if (result.success) {
+        const user = { id: result.userId, nickname: result.nickname };
+        setCurrentUser(user);
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        setShowLoginForm(false);
+        return { success: true };
+      } else {
+        return { success: false, error: result.error };
+      }
+    } catch (error) {
+      return { success: false, error: 'Login failed' };
+    }
+  };
+
+  const handleRegister = async (nickname, password) => {
+    try {
+      const result = await api.registerUser(nickname, password);
+      if (result.success) {
+        const user = { id: result.userId, nickname: result.nickname };
+        setCurrentUser(user);
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        setShowLoginForm(false);
+        return { success: true };
+      } else {
+        return { success: false, error: result.error };
+      }
+    } catch (error) {
+      return { success: false, error: 'Registration failed' };
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('currentUser');
+    navigateToHome();
   };
 
   // 등록 모드 상태 변경 시 커서 및 body 스타일 변경
@@ -216,6 +384,12 @@ function App() {
 
   // 맛집 등록 핸들러
   const handleAddRestaurant = async () => {
+    if (!currentUser) {
+      alert('로그인이 필요합니다.');
+      setShowLoginForm(true);
+      return;
+    }
+
     if (newRestaurant.name && selectedPosition) {
       try {
         const restaurantData = {
@@ -224,13 +398,15 @@ function App() {
           rating: newRestaurant.rating,
           review: newRestaurant.review || '',
           lat: selectedPosition[0],
-          lng: selectedPosition[1]
+          lng: selectedPosition[1],
+          userId: currentUser.id,
+          kakaoPlaceId: newRestaurant.kakaoPlaceId || null
         };
         
         await api.createRestaurant(restaurantData);
         await loadRestaurants(); // 데이터 다시 로드
         
-        setNewRestaurant({ name: '', address: '', rating: 3.0, review: '' });
+        setNewRestaurant({ name: '', address: '', rating: 3.0, review: '', kakaoPlaceId: null });
         setSelectedPosition(null);
         setShowAddForm(false);
         setIsAddingMode(false);
@@ -242,11 +418,22 @@ function App() {
   };
 
   // 맛집 삭제 핸들러
-  const handleDeleteRestaurant = async (id) => {
+  const handleDeleteRestaurant = async (id, restaurantUserId) => {
+    if (!currentUser) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+
+    if (currentUser.id !== restaurantUserId) {
+      alert('본인이 등록한 맛집만 삭제할 수 있습니다.');
+      return;
+    }
+
     if (confirm('정말로 이 맛집을 삭제하시겠습니까?')) {
       try {
-        await api.deleteRestaurant(id);
+        await api.deleteRestaurant(id, currentUser.id);
         await loadRestaurants(); // 데이터 다시 로드
+        setSelectedRestaurant(null); // 사이드 패널 닫기
       } catch (error) {
         console.error('맛집 삭제 실패:', error);
         alert('맛집 삭제에 실패했습니다.');
@@ -256,12 +443,27 @@ function App() {
 
   // 맛집 수정 시작 핸들러
   const handleStartEditRestaurant = (restaurant) => {
+    if (!currentUser) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+
+    if (currentUser.id !== restaurant.user_id) {
+      alert('본인이 등록한 맛집만 수정할 수 있습니다.');
+      return;
+    }
+
     setEditingRestaurant({ ...restaurant });
     setShowEditForm(true);
   };
 
   // 맛집 수정 완료 핸들러
   const handleEditRestaurant = async () => {
+    if (!currentUser) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+
     if (editingRestaurant && editingRestaurant.name) {
       try {
         await api.updateRestaurant(editingRestaurant.id, {
@@ -270,11 +472,14 @@ function App() {
           rating: editingRestaurant.rating,
           review: editingRestaurant.review,
           lat: editingRestaurant.lat,
-          lng: editingRestaurant.lng
+          lng: editingRestaurant.lng,
+          userId: currentUser.id,
+          kakaoPlaceId: editingRestaurant.kakao_place_id
         });
         await loadRestaurants(); // 데이터 다시 로드
         setEditingRestaurant(null);
         setShowEditForm(false);
+        setSelectedRestaurant(null); // 사이드 패널도 업데이트
       } catch (error) {
         console.error('맛집 수정 실패:', error);
         alert('맛집 수정에 실패했습니다.');
@@ -297,11 +502,12 @@ function App() {
       const searchResult = await searchPlaceAPI(placeName, searchLat, searchLng);
       
       if (searchResult) {
-        // 검색 결과로 이름, 주소, 위치 자동 업데이트
+        // 검색 결과로 이름, 주소, 위치, place_id 자동 업데이트
         setNewRestaurant(prev => ({
           ...prev,
           name: searchResult.placeName,
-          address: searchResult.address
+          address: searchResult.address,
+          kakaoPlaceId: searchResult.placeId
         }));
         setSelectedPosition([searchResult.lat, searchResult.lng]);
         
@@ -330,13 +536,14 @@ function App() {
       const searchResult = await searchPlaceAPI(placeName, searchLat, searchLng);
       
       if (searchResult) {
-        // 검색 결과로 이름, 주소, 위치 자동 업데이트
+        // 검색 결과로 이름, 주소, 위치, place_id 자동 업데이트
         setEditingRestaurant(prev => ({
           ...prev,
           name: searchResult.placeName,
           address: searchResult.address,
           lat: searchResult.lat,
-          lng: searchResult.lng
+          lng: searchResult.lng,
+          kakao_place_id: searchResult.placeId
         }));
         
         alert(`검색 완료!\n업체명: ${searchResult.placeName}\n주소: ${searchResult.address}\n위치가 자동으로 업데이트되었습니다.`);
@@ -405,7 +612,8 @@ function App() {
           lat: parseFloat(selectedPlace.y),
           lng: parseFloat(selectedPlace.x),
           placeName: selectedPlace.place_name,
-          phone: selectedPlace.phone || ''
+          phone: selectedPlace.phone || '',
+          placeId: selectedPlace.id
         };
       }
       
@@ -427,12 +635,21 @@ function App() {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
+        
         <button
           className={`add-restaurant-btn ${isAddingMode ? 'active' : ''}`}
-          onClick={() => setIsAddingMode(!isAddingMode)}
+          onClick={() => {
+            if (!currentUser) {
+              alert('로그인이 필요합니다.');
+              setShowLoginForm(true);
+              return;
+            }
+            setIsAddingMode(!isAddingMode);
+          }}
         >
           {isAddingMode ? '등록 취소' : '맛집 등록'}
         </button>
+        
         <button
           className={`rating-toggle-btn ${showRatingsOnMap ? 'active' : ''}`}
           onClick={() => setShowRatingsOnMap(!showRatingsOnMap)}
@@ -440,6 +657,40 @@ function App() {
         >
           ⭐ {showRatingsOnMap ? '평점 표시 중' : '평점 표시'}
         </button>
+
+        {/* 모드 전환 버튼 */}
+        <div className="mode-buttons">
+          <button
+            className={`mode-btn ${viewMode === 'all' ? 'active' : ''}`}
+            onClick={navigateToHome}
+            title="전체 맛집 보기"
+          >
+            전체
+          </button>
+          {currentUser && (
+            <button
+              className={`mode-btn ${viewMode === 'user' && viewingUser === currentUser.nickname ? 'active' : ''}`}
+              onClick={() => navigateToUser(currentUser.nickname)}
+              title="내 맛집만 보기"
+            >
+              내 맛집
+            </button>
+          )}
+        </div>
+
+        {/* 사용자 정보 */}
+        <div className="user-info">
+          {currentUser ? (
+            <div className="user-menu">
+              <span className="user-name">안녕하세요, {currentUser.nickname}님!</span>
+              <button className="logout-btn" onClick={handleLogout}>로그아웃</button>
+            </div>
+          ) : (
+            <button className="login-btn" onClick={() => setShowLoginForm(true)}>
+              로그인 / 가입
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 지도 컨테이너 */}
@@ -468,6 +719,11 @@ function App() {
             <Marker 
               key={restaurant.id} 
               position={[restaurant.lat, restaurant.lng]}
+              eventHandlers={{
+                click: () => {
+                  setSelectedRestaurant(restaurant);
+                }
+              }}
             >
               {/* 평점 표시 툴팁 */}
               {showRatingsOnMap && (
@@ -477,50 +733,13 @@ function App() {
                   offset={[0, -10]}
                   className="rating-tooltip"
                 >
-                  <span className="rating-badge">{restaurant.rating}</span>
+                  <span className="rating-badge">
+                    {viewMode === 'aggregated' && restaurant.review_count > 1 
+                      ? `${restaurant.avg_rating?.toFixed(1)}(${restaurant.review_count})`
+                      : restaurant.rating || restaurant.avg_rating?.toFixed(1)}
+                  </span>
                 </Tooltip>
               )}
-              
-              <Popup closeButton={false}>
-                <div className="restaurant-card">
-                  <button 
-                    className="close-popup-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // 부모 팝업 요소 찾아서 제거
-                      const popup = e.target.closest('.leaflet-popup');
-                      if (popup && popup.parentElement) {
-                        popup.parentElement.removeChild(popup);
-                      }
-                    }}
-                  >
-                    ✕
-                  </button>
-                  <div className="restaurant-name">{restaurant.name}</div>
-                  <div className="restaurant-rating">⭐ {restaurant.rating}/5.0</div>
-                  <div className="restaurant-address">📍 {restaurant.address}</div>
-                  {restaurant.review && (
-                    <div className="restaurant-review">
-                      <p><strong>💭 평가:</strong></p>
-                      <p>{restaurant.review}</p>
-                    </div>
-                  )}
-                  <div className="popup-buttons">
-                    <button 
-                      className="edit-popup-btn"
-                      onClick={() => handleStartEditRestaurant(restaurant)}
-                    >
-                      ✏️<span>수정</span>
-                    </button>
-                    <button 
-                      className="delete-popup-btn"
-                      onClick={() => handleDeleteRestaurant(restaurant.id)}
-                    >
-                      🗑️<span>삭제</span>
-                    </button>
-                  </div>
-                </div>
-              </Popup>
             </Marker>
           ))}
 
@@ -528,6 +747,102 @@ function App() {
           <ScaleControl position="bottomright" imperial={false} />
         </MapContainer>
       </div>
+
+      {/* 사이드 패널 */}
+      {selectedRestaurant && (
+        <div className="side-panel">
+          <div className="side-panel-header">
+            <h3>{selectedRestaurant.name}</h3>
+            <button 
+              className="close-panel-btn"
+              onClick={() => setSelectedRestaurant(null)}
+            >
+              ✕
+            </button>
+          </div>
+          
+          <div className="side-panel-content">
+            {viewMode === 'aggregated' && selectedRestaurant.reviews ? (
+              // 집계 모드: 여러 리뷰 표시
+              <div className="aggregated-reviews">
+                <div className="restaurant-summary">
+                  <div className="restaurant-rating">
+                    ⭐ {selectedRestaurant.avg_rating?.toFixed(1)}/5.0 
+                    ({selectedRestaurant.review_count}개 리뷰)
+                  </div>
+                  <div className="restaurant-address">📍 {selectedRestaurant.address}</div>
+                </div>
+                
+                <div className="reviews-list">
+                  <h4>💭 리뷰 목록</h4>
+                  {selectedRestaurant.reviews.map((review, index) => (
+                    <div key={index} className="review-item">
+                      <div className="review-header">
+                        <span className="review-author">{review.nickname || '익명'}</span>
+                        <span className="review-rating">⭐ {review.rating}</span>
+                        <span className="review-date">
+                          {new Date(review.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      {review.review && (
+                        <div className="review-text">{review.review}</div>
+                      )}
+                      {currentUser && currentUser.id === review.user_id && (
+                        <div className="review-actions">
+                          <button 
+                            className="edit-btn"
+                            onClick={() => handleStartEditRestaurant({...review, ...selectedRestaurant})}
+                          >
+                            수정
+                          </button>
+                          <button 
+                            className="delete-btn"
+                            onClick={() => handleDeleteRestaurant(review.id, review.user_id)}
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              // 일반 모드: 단일 리뷰 표시
+              <div className="single-review">
+                <div className="restaurant-rating">⭐ {selectedRestaurant.rating}/5.0</div>
+                <div className="restaurant-address">📍 {selectedRestaurant.address}</div>
+                <div className="restaurant-author">
+                  👤 {selectedRestaurant.nickname || '익명'} 
+                  ({new Date(selectedRestaurant.created_at).toLocaleDateString()})
+                </div>
+                {selectedRestaurant.review && (
+                  <div className="restaurant-review">
+                    <h4>💭 평가</h4>
+                    <p>{selectedRestaurant.review}</p>
+                  </div>
+                )}
+                {currentUser && currentUser.id === selectedRestaurant.user_id && (
+                  <div className="restaurant-actions">
+                    <button 
+                      className="edit-btn"
+                      onClick={() => handleStartEditRestaurant(selectedRestaurant)}
+                    >
+                      ✏️ 수정
+                    </button>
+                    <button 
+                      className="delete-btn"
+                      onClick={() => handleDeleteRestaurant(selectedRestaurant.id, selectedRestaurant.user_id)}
+                    >
+                      🗑️ 삭제
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 맛집 등록 모달 */}
       {showAddForm && (
@@ -685,6 +1000,141 @@ function App() {
         </div>
       )}
 
+      {/* 로그인/회원가입 모달 */}
+      {showLoginForm && (
+        <LoginModal
+          onLogin={handleLogin}
+          onRegister={handleRegister}
+          onClose={() => setShowLoginForm(false)}
+        />
+      )}
+
+    </div>
+  );
+}
+
+// 로그인/회원가입 모달 컴포넌트
+function LoginModal({ onLogin, onRegister, onClose }) {
+  const [isLoginMode, setIsLoginMode] = useState(true);
+  const [nickname, setNickname] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+
+    if (!nickname.trim() || !password.trim()) {
+      setError('닉네임과 패스워드를 입력해주세요.');
+      setIsLoading(false);
+      return;
+    }
+
+    if (!isLoginMode && password !== confirmPassword) {
+      setError('패스워드가 일치하지 않습니다.');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const result = isLoginMode 
+        ? await onLogin(nickname.trim(), password)
+        : await onRegister(nickname.trim(), password);
+      
+      if (result.success) {
+        onClose();
+      } else {
+        setError(result.error || '오류가 발생했습니다.');
+      }
+    } catch (error) {
+      setError('네트워크 오류가 발생했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <h3>{isLoginMode ? '로그인' : '회원가입'}</h3>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>닉네임</label>
+            <input
+              type="text"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              placeholder="닉네임을 입력하세요"
+              required
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>패스워드</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="패스워드를 입력하세요"
+              required
+            />
+          </div>
+          
+          {!isLoginMode && (
+            <div className="form-group">
+              <label>패스워드 확인</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="패스워드를 다시 입력하세요"
+                required
+              />
+            </div>
+          )}
+
+          {error && (
+            <div className="error-message" style={{ color: '#dc3545', marginBottom: '1rem' }}>
+              {error}
+            </div>
+          )}
+
+          <div className="modal-buttons">
+            <button type="button" className="cancel-btn" onClick={onClose}>
+              취소
+            </button>
+            <button type="submit" className="add-btn" disabled={isLoading}>
+              {isLoading ? '처리 중...' : (isLoginMode ? '로그인' : '가입하기')}
+            </button>
+          </div>
+        </form>
+
+        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+          <button 
+            type="button"
+            className="mode-switch-btn"
+            onClick={() => {
+              setIsLoginMode(!isLoginMode);
+              setError('');
+              setPassword('');
+              setConfirmPassword('');
+            }}
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              color: 'var(--text-secondary)', 
+              textDecoration: 'underline',
+              cursor: 'pointer'
+            }}
+          >
+            {isLoginMode ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

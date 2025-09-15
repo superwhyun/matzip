@@ -133,6 +133,72 @@ body {
   border-color: var(--accent-color);
 }
 
+/* 모드 전환 버튼 */
+.mode-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mode-btn {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--glass-bg);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.mode-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.mode-btn.active {
+  background: var(--accent-color);
+  color: #1a1a1a;
+  border-color: var(--accent-color);
+}
+
+/* 사용자 정보 */
+.user-info {
+  display: flex;
+  align-items: center;
+}
+
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.user-name {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.login-btn, .logout-btn {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--accent-color);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: transparent;
+  color: var(--accent-color);
+  white-space: nowrap;
+}
+
+.login-btn:hover, .logout-btn:hover {
+  background: var(--accent-color);
+  color: #1a1a1a;
+}
+
 /* 전체 화면 지도 컨테이너 */
 .full-map-container {
   position: fixed;
@@ -141,6 +207,197 @@ body {
   right: 0;
   bottom: 0;
   overflow: hidden;
+  transition: right 0.3s ease;
+}
+
+/* 사이드 패널이 열렸을 때 지도 컨테이너 조정 */
+.app-container:has(.side-panel) .full-map-container {
+  right: 400px;
+}
+
+/* 사이드 패널 */
+.side-panel {
+  position: fixed;
+  top: 80px;
+  right: 0;
+  width: 400px;
+  height: calc(100vh - 80px);
+  background: #2d2d2d;
+  backdrop-filter: blur(20px);
+  border-left: 1px solid var(--glass-border);
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+
+.side-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.side-panel-header h3 {
+  color: var(--text-primary);
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.close-panel-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-panel-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.side-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+/* 집계된 리뷰 스타일 */
+.restaurant-summary {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.restaurant-rating {
+  color: #f39c12;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  font-size: 1.2rem;
+}
+
+.restaurant-address {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.restaurant-author {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.reviews-list h4 {
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.review-item {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.review-author {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.review-rating {
+  color: #f39c12;
+  font-weight: 600;
+}
+
+.review-date {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.review-text {
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0.5rem 0;
+}
+
+.review-actions, .restaurant-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.edit-btn, .delete-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.edit-btn {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+  border: 1px solid #3498db;
+}
+
+.edit-btn:hover {
+  background: #3498db;
+  color: white;
+}
+
+.delete-btn {
+  background: rgba(231, 76, 60, 0.2);
+  color: #e74c3c;
+  border: 1px solid #e74c3c;
+}
+
+.delete-btn:hover {
+  background: #e74c3c;
+  color: white;
+}
+
+/* 단일 리뷰 스타일 */
+.single-review .restaurant-review {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--glass-border);
+}
+
+.single-review .restaurant-review h4 {
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.single-review .restaurant-review p {
+  color: var(--text-secondary);
+  line-height: 1.6;
 }
 
 /* 레벨 셀렉터 */
@@ -541,7 +798,7 @@ body.adding-mode {
 /* 반응형 디자인 */
 @media (max-width: 768px) {
   .sticky-controls {
-    flex-direction: column;
+    flex-wrap: wrap;
     gap: 0.75rem;
     padding: 1rem;
     height: auto;
@@ -551,10 +808,26 @@ body.adding-mode {
   .sticky-controls .search-input {
     width: 100%;
     max-width: none;
+    order: -1;
+  }
+
+  .user-info {
+    width: 100%;
+    justify-content: center;
   }
   
   .full-map-container {
     top: 120px;
+  }
+
+  /* 사이드 패널 모바일 최적화 */
+  .side-panel {
+    width: 100%;
+    right: 0;
+  }
+
+  .app-container:has(.side-panel) .full-map-container {
+    right: 100%;
   }
 
   .modal-content {
@@ -575,6 +848,14 @@ body.adding-mode {
   .sticky-controls {
     padding: 0.75rem;
   }
+
+  .mode-buttons {
+    order: 1;
+  }
+
+  .user-name {
+    font-size: 0.8rem;
+  }
   
   .modal-buttons {
     flex-direction: column;
@@ -587,6 +868,11 @@ body.adding-mode {
   }
   
   .full-map-container {
-    top: 140px;
+    top: 160px;
+  }
+
+  .side-panel {
+    top: 160px;
+    height: calc(100vh - 160px);
   }
 }
