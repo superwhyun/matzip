@@ -23,6 +23,7 @@ export default {
         const url = new URL(request.url);
         const userId = url.searchParams.get('userId');
         const aggregated = url.searchParams.get('aggregated') === 'true';
+        const bounds = url.searchParams.get('bounds'); // "lat1,lng1,lat2,lng2" 형태
         
         if (userId) {
           // 특정 사용자의 맛집 목록
@@ -64,25 +65,34 @@ export default {
             let reviewsStmt;
             let reviewsParams;
             
+            let reviewsWhereClause = '';
             if (group.kakao_place_id) {
-              reviewsStmt = env.DB.prepare(`
-                SELECT r.*, u.nickname 
-                FROM restaurants r 
-                LEFT JOIN users u ON r.user_id = u.id 
-                WHERE r.kakao_place_id = ?
-                ORDER BY r.created_at DESC
-              `);
+              reviewsWhereClause = 'WHERE r.kakao_place_id = ?';
               reviewsParams = [group.kakao_place_id];
             } else {
-              reviewsStmt = env.DB.prepare(`
-                SELECT r.*, u.nickname 
-                FROM restaurants r 
-                LEFT JOIN users u ON r.user_id = u.id 
-                WHERE r.kakao_place_id IS NULL AND r.name = ? AND r.address = ? AND r.lat = ? AND r.lng = ?
-                ORDER BY r.created_at DESC
-              `);
+              reviewsWhereClause = 'WHERE r.kakao_place_id IS NULL AND r.name = ? AND r.address = ? AND r.lat = ? AND r.lng = ?';
               reviewsParams = [group.name, group.address, group.lat, group.lng];
             }
+            
+            // bounds 필터링 추가
+            if (bounds) {
+              const [lat1, lng1, lat2, lng2] = bounds.split(',').map(Number);
+              const minLat = Math.min(lat1, lat2);
+              const maxLat = Math.max(lat1, lat2);
+              const minLng = Math.min(lng1, lng2);
+              const maxLng = Math.max(lng1, lng2);
+              
+              reviewsWhereClause += ' AND r.lat BETWEEN ? AND ? AND r.lng BETWEEN ? AND ?';
+              reviewsParams.push(minLat, maxLat, minLng, maxLng);
+            }
+            
+            reviewsStmt = env.DB.prepare(`
+              SELECT r.*, u.nickname 
+              FROM restaurants r 
+              LEFT JOIN users u ON r.user_id = u.id 
+              ${reviewsWhereClause}
+              ORDER BY r.created_at DESC
+            `);
             
             const { results: reviews } = await reviewsStmt.bind(...reviewsParams).all();
             
@@ -101,6 +111,20 @@ export default {
           });
         } else {
           // 전체 맛집 목록 (집계된 형태로 반환)
+          let whereClause = '';
+          let queryParams = [];
+          
+          if (bounds) {
+            const [lat1, lng1, lat2, lng2] = bounds.split(',').map(Number);
+            const minLat = Math.min(lat1, lat2);
+            const maxLat = Math.max(lat1, lat2);
+            const minLng = Math.min(lng1, lng2);
+            const maxLng = Math.max(lng1, lng2);
+            
+            whereClause = 'WHERE r.lat BETWEEN ? AND ? AND r.lng BETWEEN ? AND ?';
+            queryParams = [minLat, maxLat, minLng, maxLng];
+          }
+          
           const stmt = env.DB.prepare(`
             SELECT 
               COALESCE(r.kakao_place_id, 'no_id_' || r.id) as group_key,
@@ -114,10 +138,14 @@ export default {
               MAX(r.updated_at) as latest_update
             FROM restaurants r
             LEFT JOIN users u ON r.user_id = u.id
+            ${whereClause}
             GROUP BY COALESCE(r.kakao_place_id, 'no_id_' || r.id), r.name, r.address, r.lat, r.lng
             ORDER BY latest_update DESC
           `);
-          const { results: groupedResults } = await stmt.all();
+          
+          const { results: groupedResults } = queryParams.length > 0 
+            ? await stmt.bind(...queryParams).all()
+            : await stmt.all();
           
           // 각 그룹의 상세 리뷰 정보 가져오기
           const processedResults = [];
@@ -125,25 +153,34 @@ export default {
             let reviewsStmt;
             let reviewsParams;
             
+            let reviewsWhereClause = '';
             if (group.kakao_place_id) {
-              reviewsStmt = env.DB.prepare(`
-                SELECT r.*, u.nickname 
-                FROM restaurants r 
-                LEFT JOIN users u ON r.user_id = u.id 
-                WHERE r.kakao_place_id = ?
-                ORDER BY r.created_at DESC
-              `);
+              reviewsWhereClause = 'WHERE r.kakao_place_id = ?';
               reviewsParams = [group.kakao_place_id];
             } else {
-              reviewsStmt = env.DB.prepare(`
-                SELECT r.*, u.nickname 
-                FROM restaurants r 
-                LEFT JOIN users u ON r.user_id = u.id 
-                WHERE r.kakao_place_id IS NULL AND r.name = ? AND r.address = ? AND r.lat = ? AND r.lng = ?
-                ORDER BY r.created_at DESC
-              `);
+              reviewsWhereClause = 'WHERE r.kakao_place_id IS NULL AND r.name = ? AND r.address = ? AND r.lat = ? AND r.lng = ?';
               reviewsParams = [group.name, group.address, group.lat, group.lng];
             }
+            
+            // bounds 필터링 추가
+            if (bounds) {
+              const [lat1, lng1, lat2, lng2] = bounds.split(',').map(Number);
+              const minLat = Math.min(lat1, lat2);
+              const maxLat = Math.max(lat1, lat2);
+              const minLng = Math.min(lng1, lng2);
+              const maxLng = Math.max(lng1, lng2);
+              
+              reviewsWhereClause += ' AND r.lat BETWEEN ? AND ? AND r.lng BETWEEN ? AND ?';
+              reviewsParams.push(minLat, maxLat, minLng, maxLng);
+            }
+            
+            reviewsStmt = env.DB.prepare(`
+              SELECT r.*, u.nickname 
+              FROM restaurants r 
+              LEFT JOIN users u ON r.user_id = u.id 
+              ${reviewsWhereClause}
+              ORDER BY r.created_at DESC
+            `);
             
             const { results: reviews } = await reviewsStmt.bind(...reviewsParams).all();
             
@@ -501,7 +538,7 @@ export default {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>맛집 지도 - Matzip Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script type="module" crossorigin src="/assets/index-1e3c8b5d.js"></script>
+    <script type="module" crossorigin src="/assets/index-ee5438b1.js"></script>
     <link rel="stylesheet" href="/assets/index-a175c48f.css">
   </head>
   <body>
@@ -533,7 +570,7 @@ export default {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>맛집 지도 - Matzip Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script type="module" crossorigin src="/assets/index-1e3c8b5d.js"></script>
+    <script type="module" crossorigin src="/assets/index-ee5438b1.js"></script>
     <link rel="stylesheet" href="/assets/index-a175c48f.css">
   </head>
   <body>

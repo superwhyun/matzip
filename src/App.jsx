@@ -137,12 +137,23 @@ const api = {
   }
 };
 
-// 지도 클릭 이벤트 처리 컴포넌트
-function MapClickHandler({ isAddingMode, onMapClick }) {
+// 지도 이벤트 처리 컴포넌트
+function MapEventHandler({ isAddingMode, onMapClick, onMapMoveEnd }) {
   useMapEvents({
     click: (event) => {
       if (isAddingMode) {
         onMapClick(event);
+      }
+    },
+    moveend: (event) => {
+      // 지도 이동/줌 완료시 bounds와 줌 레벨 정보 전달
+      if (onMapMoveEnd) {
+        const map = event.target;
+        const bounds = map.getBounds();
+        const sw = bounds.getSouthWest();
+        const ne = bounds.getNorthEast();
+        const zoomLevel = map.getZoom();
+        onMapMoveEnd(sw.lat, sw.lng, ne.lat, ne.lng, zoomLevel);
       }
     }
   });
@@ -176,8 +187,22 @@ function App() {
   const [viewMode, setViewMode] = useState('all'); // 'all', 'user', 'aggregated'
   const [selectedRestaurant, setSelectedRestaurant] = useState(null); // 사이드 패널용
 
+  // 지도 최적화를 위한 상태들
+  const [previousZoomLevel, setPreviousZoomLevel] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+
   // 세종시 중심 좌표와 20km 범위 제한
   const mapCenter = [36.4795, 127.2891];
+  const maxZoomOutLevel = 13; // 세종시 전체가 보이는 줌 레벨
+
+  // 디바운싱 함수
+  const debounce = (func, wait) => {
+    let timeout;
+    return (...args) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func(...args), wait);
+    };
+  };
 
 
   // 컴포넌트 마운트시 URL 파싱 및 데이터 로드
@@ -200,8 +225,11 @@ function App() {
       loadRestaurants('user', nickname);
     } else {
       setViewMode('all'); // 기본은 전체 모드 (집계 아닌 일반)
-      loadRestaurants('all', null);
+      loadRestaurants('all', null); // 초기 로드는 전체 데이터
     }
+    
+    // 초기 줌 레벨 설정
+    setPreviousZoomLevel(maxZoomOutLevel);
   }, []);
 
   // URL 변경 감지
@@ -237,39 +265,73 @@ function App() {
   }, [searchTerm, restaurants]);
 
   // API 데이터 로드
-  const loadRestaurants = async (mode = null, user = null) => {
+  const loadRestaurants = async (mode = null, user = null, bounds = null, isAppendMode = false) => {
+    if (isLoading) {
+      console.log('🔄 이미 로딩 중 - 요청 무시');
+      return;
+    }
+    
     try {
+      setIsLoading(true);
       const currentMode = mode || viewMode;
       const currentUser = user || viewingUser;
       
-      console.log('🔍 loadRestaurants 호출:', { currentMode, currentUser });
+      console.log('🔍 loadRestaurants 호출:', { currentMode, currentUser, bounds, isAppendMode });
       
       let data;
+      let apiParams = {};
+      
+      // bounds 파라미터 추가
+      if (bounds) {
+        apiParams.bounds = bounds;
+      }
+      
       if (currentMode === 'user' && currentUser) {
         // 특정 사용자의 맛집 조회
         const userInfo = await api.getUserInfo(currentUser);
         if (userInfo.success) {
-          data = await api.getRestaurants({ userId: userInfo.user.id });
+          data = await api.getRestaurants({ userId: userInfo.user.id, ...apiParams });
         } else {
           data = [];
         }
       } else if (currentMode === 'aggregated') {
         // 집계된 맛집 목록 조회
-        data = await api.getRestaurants({ aggregated: 'true' });
+        data = await api.getRestaurants({ aggregated: 'true', ...apiParams });
       } else {
         // 전체 맛집 목록 조회 (기본)
-        data = await api.getRestaurants();
+        data = await api.getRestaurants(apiParams);
       }
       
       // 데이터가 배열인지 확인
       const validData = Array.isArray(data) ? data : [];
       console.log('📊 로드된 맛집 데이터:', validData.length, '개');
-      setRestaurants(validData);
-      setFilteredRestaurants(validData);
+      
+      if (isAppendMode) {
+        // 기존 데이터와 병합 (중복 제거)
+        setRestaurants(prevRestaurants => {
+          const existingKeys = new Set(prevRestaurants.map(r => r.group_key || r.id));
+          const newRestaurants = validData.filter(r => !existingKeys.has(r.group_key || r.id));
+          console.log('🔗 병합: 기존', prevRestaurants.length, '개 + 신규', newRestaurants.length, '개');
+          return [...prevRestaurants, ...newRestaurants];
+        });
+        setFilteredRestaurants(prevFiltered => {
+          const existingKeys = new Set(prevFiltered.map(r => r.group_key || r.id));
+          const newRestaurants = validData.filter(r => !existingKeys.has(r.group_key || r.id));
+          return [...prevFiltered, ...newRestaurants];
+        });
+      } else {
+        // 전체 교체
+        setRestaurants(validData);
+        setFilteredRestaurants(validData);
+      }
     } catch (error) {
       console.error('데이터 로드 실패:', error);
-      setRestaurants([]);
-      setFilteredRestaurants([]);
+      if (!isAppendMode) {
+        setRestaurants([]);
+        setFilteredRestaurants([]);
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -370,6 +432,45 @@ function App() {
     setCurrentUser(null);
     localStorage.removeItem('currentUser');
     navigateToHome();
+  };
+
+  // 디바운싱된 맛집 로드 함수
+  const debouncedLoadRestaurants = useCallback(
+    debounce((bounds) => {
+      console.log('⏰ 디바운싱 완료 - 맛집 로드:', bounds);
+      loadRestaurants(viewMode, viewingUser, bounds, true); // 병합 모드로 로드
+    }, 500),
+    [viewMode, viewingUser]
+  );
+
+  // 지도 이동 완료시 조건부 맛집 로드
+  const handleMapMoveEnd = (swLat, swLng, neLat, neLng, currentZoomLevel) => {
+    console.log('🗺️ 지도 이벤트:', { 
+      currentZoomLevel, 
+      previousZoomLevel,
+      isMaxZoomOut: currentZoomLevel === maxZoomOutLevel 
+    });
+    
+    // 줌 레벨이 변경된 경우 - API 호출 안 함
+    if (previousZoomLevel !== null && previousZoomLevel !== currentZoomLevel) {
+      console.log('🔍 줌 변경 감지 - API 호출 안 함');
+      setPreviousZoomLevel(currentZoomLevel);
+      return;
+    }
+    
+    // 현재 줌 레벨 업데이트
+    setPreviousZoomLevel(currentZoomLevel);
+    
+    // 최대 줌아웃 상태가 아닌 경우 - API 호출 안 함
+    if (currentZoomLevel !== maxZoomOutLevel) {
+      console.log('🔍 최대 줌아웃 아님 - API 호출 안 함');
+      return;
+    }
+    
+    // 이동 이벤트이고 최대 줌아웃인 경우 - 디바운싱 적용하여 API 호출
+    const boundsString = `${swLat},${swLng},${neLat},${neLng}`;
+    console.log('🗺️ 지도 이동 - 디바운싱 시작:', boundsString);
+    debouncedLoadRestaurants(boundsString);
   };
 
   // 등록 모드 상태 변경 시 커서 및 body 스타일 변경
@@ -831,7 +932,11 @@ function App() {
           />
 
           {/* 지도 클릭 이벤트 처리 */}
-          <MapClickHandler isAddingMode={isAddingMode} onMapClick={handleMapClick} />
+          <MapEventHandler 
+            isAddingMode={isAddingMode} 
+            onMapClick={handleMapClick}
+            onMapMoveEnd={handleMapMoveEnd}
+          />
 
           {/* 마커 표시 */}
           {filteredRestaurants.map(restaurant => {
