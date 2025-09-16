@@ -35,8 +35,42 @@ const createCustomIcon = (color = 'red') => {
 const myRestaurantIcon = createCustomIcon('red');    // 내 맛집
 const otherRestaurantIcon = createCustomIcon('blue'); // 다른 사용자 맛집
 
+// 카테고리 매핑 시스템
+const categoryToIcon = (categoryName) => {
+  if (!categoryName) return '🍽️';
+  
+  const category = categoryName.toLowerCase();
+  
+  // 카페/디저트
+  if (category.includes('카페') || category.includes('디저트') || category.includes('베이커리')) {
+    return '☕';
+  }
+  // 주점/바
+  if (category.includes('호프') || category.includes('맥주') || category.includes('바') || 
+      category.includes('술집') || category.includes('와인') || category.includes('칵테일')) {
+    return '🍺';
+  }
+  // 고기/구이
+  if (category.includes('갈비') || category.includes('삼겹살') || category.includes('바베큐') || 
+      category.includes('구이') || category.includes('고기')) {
+    return '🍖';
+  }
+  // 면/국물요리
+  if (category.includes('라면') || category.includes('국수') || category.includes('찌개') || 
+      category.includes('탕') || category.includes('면')) {
+    return '🍜';
+  }
+  // 패스트푸드/치킨
+  if (category.includes('치킨') || category.includes('피자') || category.includes('햄버거') || 
+      category.includes('패스트푸드')) {
+    return '🍟';
+  }
+  // 기본 음식점
+  return '🍽️';
+};
+
 // API 기본 URL - 개발/프로덕션 자동 감지
-const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:8787' : '';
+const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:3000' : '';
 
 // API 함수들
 const api = {
@@ -124,7 +158,9 @@ function App() {
     name: '',
     address: '',
     rating: 3.0,
-    review: ''
+    review: '',
+    kakaoPlaceId: null,
+    category: null
   });
   const [selectedPosition, setSelectedPosition] = useState(null);
   const [isAddingMode, setIsAddingMode] = useState(false);
@@ -206,6 +242,8 @@ function App() {
       const currentMode = mode || viewMode;
       const currentUser = user || viewingUser;
       
+      console.log('🔍 loadRestaurants 호출:', { currentMode, currentUser });
+      
       let data;
       if (currentMode === 'user' && currentUser) {
         // 특정 사용자의 맛집 조회
@@ -223,10 +261,15 @@ function App() {
         data = await api.getRestaurants();
       }
       
-      setRestaurants(data);
-      setFilteredRestaurants(data);
+      // 데이터가 배열인지 확인
+      const validData = Array.isArray(data) ? data : [];
+      console.log('📊 로드된 맛집 데이터:', validData.length, '개');
+      setRestaurants(validData);
+      setFilteredRestaurants(validData);
     } catch (error) {
       console.error('데이터 로드 실패:', error);
+      setRestaurants([]);
+      setFilteredRestaurants([]);
     }
   };
 
@@ -274,7 +317,8 @@ function App() {
       address: restaurant.address,
       rating: 3.0, // 기본 평점
       review: '',  // 빈 리뷰
-      kakaoPlaceId: restaurant.kakao_place_id
+      kakaoPlaceId: restaurant.kakao_place_id,
+      category: restaurant.category
     });
     
     // 위치 설정
@@ -428,6 +472,8 @@ function App() {
 
   // 맛집 등록 핸들러
   const handleAddRestaurant = async () => {
+    console.log('🍽️ 맛집 등록 시작:', { currentUser, newRestaurant, selectedPosition });
+    
     if (!currentUser) {
       alert('로그인이 필요합니다.');
       setShowLoginForm(true);
@@ -435,6 +481,7 @@ function App() {
     }
 
     if (newRestaurant.name && selectedPosition) {
+      console.log('✅ 조건 통과: 이름과 위치 있음');
       try {
         const restaurantData = {
           name: newRestaurant.name,
@@ -444,20 +491,34 @@ function App() {
           lat: selectedPosition[0],
           lng: selectedPosition[1],
           userId: currentUser.id,
-          kakaoPlaceId: newRestaurant.kakaoPlaceId || null
+          kakaoPlaceId: newRestaurant.kakaoPlaceId || null,
+          category: newRestaurant.category || null
         };
         
-        await api.createRestaurant(restaurantData);
-        await loadRestaurants(); // 데이터 다시 로드
+        console.log('📤 서버로 전송할 데이터:', restaurantData);
+        const result = await api.createRestaurant(restaurantData);
+        console.log('✅ 서버 응답:', result);
         
-        setNewRestaurant({ name: '', address: '', rating: 3.0, review: '', kakaoPlaceId: null });
+        console.log('🔄 데이터 다시 로드 시작...');
+        await loadRestaurants(viewMode, viewingUser); // 현재 뷰 모드에 맞게 데이터 다시 로드
+        console.log('✅ 데이터 로드 완료');
+        
+        setNewRestaurant({ name: '', address: '', rating: 3.0, review: '', kakaoPlaceId: null, category: null });
         setSelectedPosition(null);
         setShowAddForm(false);
         setIsAddingMode(false);
       } catch (error) {
-        console.error('맛집 등록 실패:', error);
+        console.error('❌ 맛집 등록 실패:', error);
         alert('맛집 등록에 실패했습니다.');
       }
+    } else {
+      console.log('❌ 조건 실패:', { 
+        name: newRestaurant.name, 
+        selectedPosition,
+        nameExists: !!newRestaurant.name,
+        positionExists: !!selectedPosition
+      });
+      alert('맛집 이름과 위치를 모두 입력해주세요.');
     }
   };
 
@@ -476,7 +537,7 @@ function App() {
     if (confirm('정말로 이 맛집을 삭제하시겠습니까?')) {
       try {
         await api.deleteRestaurant(id, currentUser.id);
-        await loadRestaurants(); // 데이터 다시 로드
+        await loadRestaurants(viewMode, viewingUser); // 현재 뷰 모드에 맞게 데이터 다시 로드
         setSelectedRestaurant(null); // 사이드 패널 닫기
       } catch (error) {
         console.error('맛집 삭제 실패:', error);
@@ -518,9 +579,10 @@ function App() {
           lat: editingRestaurant.lat,
           lng: editingRestaurant.lng,
           userId: currentUser.id,
-          kakaoPlaceId: editingRestaurant.kakao_place_id
+          kakaoPlaceId: editingRestaurant.kakao_place_id,
+          category: editingRestaurant.category || null
         });
-        await loadRestaurants(); // 데이터 다시 로드
+        await loadRestaurants(viewMode, viewingUser); // 현재 뷰 모드에 맞게 데이터 다시 로드
         setEditingRestaurant(null);
         setShowEditForm(false);
         setSelectedRestaurant(null); // 사이드 패널도 업데이트
@@ -546,13 +608,19 @@ function App() {
       const searchResult = await searchPlaceAPI(placeName, searchLat, searchLng);
       
       if (searchResult) {
-        // 검색 결과로 이름, 주소, 위치, place_id 자동 업데이트
-        setNewRestaurant(prev => ({
-          ...prev,
+        console.log('🔍 카카오 검색 결과:', searchResult);
+        
+        // 검색 결과로 이름, 주소, 위치, place_id, 카테고리 자동 업데이트
+        const updatedRestaurant = {
+          ...newRestaurant,
           name: searchResult.placeName,
           address: searchResult.address,
-          kakaoPlaceId: searchResult.placeId
-        }));
+          kakaoPlaceId: searchResult.placeId,
+          category: searchResult.categoryName
+        };
+        
+        console.log('🏪 업데이트될 맛집 정보:', updatedRestaurant);
+        setNewRestaurant(updatedRestaurant);
         setSelectedPosition([searchResult.lat, searchResult.lng]);
         
         alert(`검색 완료!\n업체명: ${searchResult.placeName}\n주소: ${searchResult.address}\n위치가 자동으로 업데이트되었습니다.`);
@@ -580,14 +648,15 @@ function App() {
       const searchResult = await searchPlaceAPI(placeName, searchLat, searchLng);
       
       if (searchResult) {
-        // 검색 결과로 이름, 주소, 위치, place_id 자동 업데이트
+        // 검색 결과로 이름, 주소, 위치, place_id, 카테고리 자동 업데이트
         setEditingRestaurant(prev => ({
           ...prev,
           name: searchResult.placeName,
           address: searchResult.address,
           lat: searchResult.lat,
           lng: searchResult.lng,
-          kakao_place_id: searchResult.placeId
+          kakao_place_id: searchResult.placeId,
+          category: searchResult.categoryName
         }));
         
         alert(`검색 완료!\n업체명: ${searchResult.placeName}\n주소: ${searchResult.address}\n위치가 자동으로 업데이트되었습니다.`);
@@ -651,14 +720,20 @@ function App() {
         
         const selectedPlace = closestPlace;
         
-        return {
+        console.log('📍 선택된 카카오 장소:', selectedPlace);
+        
+        const result = {
           address: selectedPlace.road_address_name || selectedPlace.address_name,
           lat: parseFloat(selectedPlace.y),
           lng: parseFloat(selectedPlace.x),
           placeName: selectedPlace.place_name,
           phone: selectedPlace.phone || '',
-          placeId: selectedPlace.id
+          placeId: selectedPlace.id,
+          categoryName: selectedPlace.category_name || ''
         };
+        
+        console.log('🏪 반환할 장소 정보:', result);
+        return result;
       }
       
       return null;
@@ -766,7 +841,7 @@ function App() {
             
             return (
               <Marker 
-                key={restaurant.id} 
+                key={restaurant.group_key || restaurant.id} 
                 position={[restaurant.lat, restaurant.lng]}
                 icon={hasMyReview ? myRestaurantIcon : otherRestaurantIcon}
                 eventHandlers={{
@@ -780,11 +855,14 @@ function App() {
                 <Tooltip
                   permanent={true}
                   direction="top"
-                  offset={[0, -10]}
+                  offset={[0, -45]}
                   className="rating-tooltip"
                 >
                   <span className="rating-badge">
-                    {viewMode === 'aggregated' && restaurant.review_count > 1 
+                    {restaurant.category && (
+                      <span className="category-icon">{categoryToIcon(restaurant.category)}</span>
+                    )}
+                    {restaurant.review_count > 1 
                       ? `${restaurant.avg_rating?.toFixed(1)}(${restaurant.review_count})`
                       : restaurant.rating || restaurant.avg_rating?.toFixed(1)}
                   </span>
@@ -822,6 +900,9 @@ function App() {
                     ({selectedRestaurant.review_count}개 리뷰)
                   </div>
                   <div className="restaurant-address">📍 {selectedRestaurant.address}</div>
+                  <div className="restaurant-category">
+                    {categoryToIcon(selectedRestaurant.category)} {selectedRestaurant.category || '음식점'}
+                  </div>
                 </div>
                 
                 <div className="reviews-list">

@@ -86,8 +86,12 @@ export default {
             
             const { results: reviews } = await reviewsStmt.bind(...reviewsParams).all();
             
+            // 첫 번째 리뷰에서 카테고리 정보 가져오기
+            const category = reviews.length > 0 ? reviews[0].category : null;
+            
             processedResults.push({
               ...group,
+              category: category,
               reviews: reviews
             });
           }
@@ -143,8 +147,12 @@ export default {
             
             const { results: reviews } = await reviewsStmt.bind(...reviewsParams).all();
             
+            // 첫 번째 리뷰에서 카테고리 정보 가져오기
+            const category = reviews.length > 0 ? reviews[0].category : null;
+            
             processedResults.push({
               ...group,
+              category: category,
               reviews: reviews
             });
           }
@@ -158,7 +166,7 @@ export default {
       // 맛집 등록
       if (path === '/api/restaurants' && method === 'POST') {
         const data = await request.json();
-        const { name, address, lat, lng, rating, review, userId, kakaoPlaceId } = data;
+        const { name, address, lat, lng, rating, review, userId, kakaoPlaceId, category } = data;
         
         if (!userId) {
           return new Response(JSON.stringify({ error: 'User ID is required' }), {
@@ -168,11 +176,11 @@ export default {
         }
         
         const stmt = env.DB.prepare(`
-          INSERT INTO restaurants (name, address, lat, lng, rating, review, user_id, kakao_place_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO restaurants (name, address, lat, lng, rating, review, user_id, kakao_place_id, category)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         
-        const result = await stmt.bind(name, address, lat, lng, rating, review, userId, kakaoPlaceId).run();
+        const result = await stmt.bind(name, address, lat, lng, rating, review, userId, kakaoPlaceId, category || null).run();
         
         return new Response(JSON.stringify({ 
           id: result.meta.last_row_id,
@@ -186,7 +194,7 @@ export default {
       if (path.startsWith('/api/restaurants/') && method === 'PUT') {
         const id = path.split('/')[3];
         const data = await request.json();
-        const { name, address, lat, lng, rating, review, userId, kakaoPlaceId } = data;
+        const { name, address, lat, lng, rating, review, userId, kakaoPlaceId, category } = data;
         
         if (!userId) {
           return new Response(JSON.stringify({ error: 'User ID is required' }), {
@@ -216,11 +224,11 @@ export default {
         const stmt = env.DB.prepare(`
           UPDATE restaurants 
           SET name = ?, address = ?, lat = ?, lng = ?, rating = ?, review = ?, 
-              kakao_place_id = ?, updated_at = CURRENT_TIMESTAMP
+              kakao_place_id = ?, category = ?, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `);
         
-        await stmt.bind(name, address, lat, lng, rating, review, kakaoPlaceId, id).run();
+        await stmt.bind(name, address, lat, lng, rating, review, kakaoPlaceId, category || null, id).run();
         
         return new Response(JSON.stringify({ success: true }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -493,8 +501,8 @@ export default {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>맛집 지도 - Matzip Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script type="module" crossorigin src="/assets/index-d5a69d5d.js"></script>
-    <link rel="stylesheet" href="/assets/index-91442b02.css">
+    <script type="module" crossorigin src="/assets/index-1e3c8b5d.js"></script>
+    <link rel="stylesheet" href="/assets/index-a175c48f.css">
   </head>
   <body>
     <div id="root"></div>
@@ -525,8 +533,8 @@ export default {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>맛집 지도 - Matzip Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script type="module" crossorigin src="/assets/index-d5a69d5d.js"></script>
-    <link rel="stylesheet" href="/assets/index-91442b02.css">
+    <script type="module" crossorigin src="/assets/index-1e3c8b5d.js"></script>
+    <link rel="stylesheet" href="/assets/index-a175c48f.css">
   </head>
   <body>
     <div id="root"></div>
