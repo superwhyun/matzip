@@ -314,7 +314,7 @@ export default {
       // 카카오 장소검색 API 프록시
       if (path === '/api/search-place' && method === 'POST') {
         const data = await request.json();
-        const { query } = data;
+        const { query, lat, lng } = data;
         
         if (!query || !query.trim()) {
           return new Response(JSON.stringify({ error: 'Query parameter is required' }), {
@@ -335,29 +335,63 @@ export default {
         }
 
         try {
-          console.log('Calling Kakao API with query:', query);
-          
-          const kakaoResponse = await fetch(
-            `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`,
-            {
-              headers: {
-                'Authorization': `KakaoAK ${env.VITE_KAKAO_API_KEY}`
-              }
+          // 디버그 정보 수집
+          const debugInfo = {
+            request: {
+              query: query,
+              encodedQuery: encodeURIComponent(query),
+              coordinates: lat && lng ? { lat, lng, radius: '5km' } : null,
+              apiKeyExists: !!env.VITE_KAKAO_API_KEY,
+              apiKeyPrefix: env.VITE_KAKAO_API_KEY?.substring(0, 10) + '...'
             }
-          );
+          };
 
-          console.log('Kakao API response status:', kakaoResponse.status);
+          // 좌표가 있으면 좌표 기반 검색, 없으면 키워드만 검색
+          let apiUrl = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`;
+
+          if (lat && lng) {
+            // 좌표 기반 검색: x=경도, y=위도, radius=반경(미터, 최대 20000)
+            apiUrl += `&x=${lng}&y=${lat}&radius=5000`;
+          }
+
+          debugInfo.request.fullApiUrl = apiUrl;
+
+          const requestHeaders = {
+            'Authorization': `KakaoAK ${env.VITE_KAKAO_API_KEY}`
+          };
+
+          const kakaoResponse = await fetch(apiUrl, {
+            headers: requestHeaders
+          });
+
+          debugInfo.response = {
+            status: kakaoResponse.status,
+            statusText: kakaoResponse.statusText,
+            headers: Object.fromEntries(kakaoResponse.headers.entries())
+          };
 
           if (!kakaoResponse.ok) {
             const errorText = await kakaoResponse.text();
-            console.log('Kakao API error response:', errorText);
+            debugInfo.response.errorBody = errorText;
             throw new Error(`Kakao API error: ${kakaoResponse.status} - ${errorText}`);
           }
 
           const kakaoData = await kakaoResponse.json();
-          console.log('Kakao API success, documents count:', kakaoData.documents?.length || 0);
-          
-          return new Response(JSON.stringify(kakaoData), {
+
+          debugInfo.response.success = true;
+          debugInfo.response.documentsCount = kakaoData.documents?.length || 0;
+          debugInfo.response.meta = kakaoData.meta;
+          if (kakaoData.documents && kakaoData.documents.length > 0) {
+            debugInfo.response.firstDocument = kakaoData.documents[0];
+          }
+
+          // 카카오 응답에 디버그 정보 추가
+          const responseWithDebug = {
+            ...kakaoData,
+            debug: debugInfo
+          };
+
+          return new Response(JSON.stringify(responseWithDebug), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
         } catch (error) {

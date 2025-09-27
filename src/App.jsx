@@ -777,14 +777,18 @@ function App() {
     try {
       // Worker API 프록시를 통해 카카오 API 호출
       const apiUrl = API_BASE_URL + '/api/search-place';
-      const searchQuery = `${keyword} 세종시 맛집`; // 검색어에 지역 추가
+      const searchQuery = keyword; // 검색어만 사용 (지역 하드코딩 제거)
         
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ query: searchQuery })
+        body: JSON.stringify({
+          query: searchQuery,
+          lat: lat,
+          lng: lng
+        })
       });
       
       if (!response.ok) {
@@ -793,7 +797,15 @@ function App() {
       }
       
       const data = await response.json();
-      
+
+      // 디버그 정보를 브라우저 콘솔에 출력
+      if (data.debug) {
+        console.log('=== Kakao API Debug Info ===');
+        console.log('요청 정보:', data.debug.request);
+        console.log('응답 정보:', data.debug.response);
+        console.log('전체 응답 데이터:', data);
+      }
+
       // 카카오 API 응답 처리
       if (data.documents && data.documents.length > 0) {
         // 현재 위치(lat, lng)에서 가장 가까운 결과 선택
