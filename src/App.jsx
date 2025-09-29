@@ -191,9 +191,11 @@ function App() {
   const [previousZoomLevel, setPreviousZoomLevel] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // 세종시 중심 좌표와 20km 범위 제한
-  const mapCenter = [36.4795, 127.2891];
-  const maxZoomOutLevel = 13; // 세종시 전체가 보이는 줌 레벨
+  // 기본 좌표 (세종시) 및 현재 위치 상태
+  const defaultCenter = [36.4795, 127.2891];
+  const [mapCenter, setMapCenter] = useState(defaultCenter);
+  const [isLocationLoading, setIsLocationLoading] = useState(true);
+  const maxZoomOutLevel = 13;
 
   // 디바운싱 함수
   const debounce = (func, wait) => {
@@ -205,31 +207,74 @@ function App() {
   };
 
 
-  // 컴포넌트 마운트시 URL 파싱 및 데이터 로드
+  // 사용자의 현재 위치 가져오기
+  const getCurrentLocation = () => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Geolocation is not supported'));
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          console.log('GPS 위치 획득:', latitude, longitude);
+          resolve([latitude, longitude]);
+        },
+        (error) => {
+          console.warn('GPS 위치 가져오기 실패:', error.message);
+          reject(error);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000 // 5분간 캐시 사용
+        }
+      );
+    });
+  };
+
+  // 컴포넌트 마운트시 위치 가져오기 및 URL 파싱, 데이터 로드
   useEffect(() => {
-    // URL 파싱
-    const path = window.location.pathname;
-    const userMatch = path.match(/^\/u\/([^\/]+)$/);
-    
-    // 로컬스토리지에서 사용자 정보 복원
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser));
-    }
-    
-    if (userMatch) {
-      const nickname = userMatch[1];
-      setViewingUser(nickname);
-      setViewMode('user');
-      loadUserInfo(nickname);
-      loadRestaurants('user', nickname);
-    } else {
-      setViewMode('all'); // 기본은 전체 모드 (집계 아닌 일반)
-      loadRestaurants('all', null); // 초기 로드는 전체 데이터
-    }
-    
-    // 초기 줌 레벨 설정
-    setPreviousZoomLevel(maxZoomOutLevel);
+    const initializeApp = async () => {
+      // GPS 위치 가져오기 시도
+      try {
+        const userLocation = await getCurrentLocation();
+        setMapCenter(userLocation);
+        console.log('지도 중심을 사용자 위치로 설정:', userLocation);
+      } catch (error) {
+        console.log('GPS 사용 불가, 기본 위치(세종시) 사용');
+        setMapCenter(defaultCenter);
+      } finally {
+        setIsLocationLoading(false);
+      }
+
+      // URL 파싱
+      const path = window.location.pathname;
+      const userMatch = path.match(/^\/u\/([^\/]+)$/);
+      
+      // 로컬스토리지에서 사용자 정보 복원
+      const savedUser = localStorage.getItem('currentUser');
+      if (savedUser) {
+        setCurrentUser(JSON.parse(savedUser));
+      }
+      
+      if (userMatch) {
+        const nickname = userMatch[1];
+        setViewingUser(nickname);
+        setViewMode('user');
+        loadUserInfo(nickname);
+        loadRestaurants('user', nickname);
+      } else {
+        setViewMode('all');
+        loadRestaurants('all', null);
+      }
+      
+      // 초기 줌 레벨 설정
+      setPreviousZoomLevel(maxZoomOutLevel);
+    };
+
+    initializeApp();
   }, []);
 
   // URL 변경 감지
@@ -868,76 +913,85 @@ function App() {
           onChange={(e) => setSearchTerm(e.target.value)}
         />
         
-        <button
-          className={`add-restaurant-btn ${isAddingMode ? 'active' : ''}`}
-          onClick={() => {
-            if (!currentUser) {
-              alert('로그인이 필요합니다.');
-              setShowLoginForm(true);
-              return;
-            }
-            setIsAddingMode(!isAddingMode);
-          }}
-        >
-          {isAddingMode ? '등록 취소' : '맛집 등록'}
-        </button>
-        
-        <button
-          className={`rating-toggle-btn ${showRatingsOnMap ? 'active' : ''}`}
-          onClick={() => setShowRatingsOnMap(!showRatingsOnMap)}
-          title={showRatingsOnMap ? '지도에서 평점 숨기기' : '지도에 평점 표시하기'}
-        >
-          ⭐ {showRatingsOnMap ? '평점 표시 중' : '평점 표시'}
-        </button>
-
-        {/* 모드 전환 버튼 */}
-        <div className="mode-buttons">
+        {/* 모바일에서는 메인 컨트롤들을 하나의 컨테이너로 묶음 */}
+        <div className="mobile-main-controls">
           <button
-            className={`mode-btn ${viewMode === 'all' ? 'active' : ''}`}
-            onClick={navigateToHome}
-            title="전체 맛집 보기"
+            className={`add-restaurant-btn ${isAddingMode ? 'active' : ''}`}
+            onClick={() => {
+              if (!currentUser) {
+                alert('로그인이 필요합니다.');
+                setShowLoginForm(true);
+                return;
+              }
+              setIsAddingMode(!isAddingMode);
+            }}
           >
-            전체
+            {isAddingMode ? '등록 취소' : '맛집 등록'}
           </button>
-          {currentUser && (
-            <button
-              className={`mode-btn ${viewMode === 'user' && viewingUser === currentUser.nickname ? 'active' : ''}`}
-              onClick={() => navigateToUser(currentUser.nickname)}
-              title="내 맛집만 보기"
-            >
-              내 맛집
-            </button>
-          )}
-        </div>
+          
+          <button
+            className={`rating-toggle-btn ${showRatingsOnMap ? 'active' : ''}`}
+            onClick={() => setShowRatingsOnMap(!showRatingsOnMap)}
+            title={showRatingsOnMap ? '지도에서 평점 숨기기' : '지도에 평점 표시하기'}
+          >
+            ⭐ {showRatingsOnMap ? '표시중' : '평점'}
+          </button>
 
-        {/* 사용자 정보 */}
-        <div className="user-info">
-          {currentUser ? (
-            <div className="user-menu">
-              <span className="user-name">안녕하세요, {currentUser.nickname}님!</span>
-              <button className="logout-btn" onClick={handleLogout}>로그아웃</button>
-            </div>
-          ) : (
-            <button className="login-btn" onClick={() => setShowLoginForm(true)}>
-              로그인 / 가입
+          {/* 모드 전환 버튼 */}
+          <div className="mode-buttons">
+            <button
+              className={`mode-btn ${viewMode === 'all' ? 'active' : ''}`}
+              onClick={navigateToHome}
+              title="전체 맛집 보기"
+            >
+              전체
             </button>
+            {currentUser && (
+              <button
+                className={`mode-btn ${viewMode === 'user' && viewingUser === currentUser.nickname ? 'active' : ''}`}
+                onClick={() => navigateToUser(currentUser.nickname)}
+                title="내 맛집만 보기"
+              >
+                내 맛집
+              </button>
+            )}
+          </div>
+
+          {/* 사용자 관련 버튼도 메인 버튼 줄에 포함 */}
+          {currentUser ? (
+            <button className="logout-btn" onClick={handleLogout}>로그아웃</button>
+          ) : (
+            <button className="login-btn" onClick={() => setShowLoginForm(true)}>로그인</button>
           )}
         </div>
       </div>
 
       {/* 지도 컨테이너 */}
       <div className={`full-map-container ${isAddingMode ? 'adding-mode' : ''}`}>
-        <MapContainer
-          center={mapCenter}
-          zoom={13}
-          maxZoom={18}
-          minZoom={13}
-          scrollWheelZoom={{ smooth: true, sensitivity: 0.5 }}
-          style={{
+        {isLocationLoading ? (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
             height: '100%',
-            width: '100%'
-          }}
-        >
+            fontSize: '18px',
+            color: '#666'
+          }}>
+            📍 위치 정보를 가져오는 중...
+          </div>
+        ) : (
+          <MapContainer
+            key={`${mapCenter[0]}-${mapCenter[1]}`} // 위치 변경시 맵 재렌더링
+            center={mapCenter}
+            zoom={13}
+            maxZoom={18}
+            minZoom={13}
+            scrollWheelZoom={{ smooth: true, sensitivity: 0.5 }}
+            style={{
+              height: '100%',
+              width: '100%'
+            }}
+          >
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; OpenStreetMap contributors'
@@ -989,9 +1043,10 @@ function App() {
             );
           })}
 
-          {/* 축척 표시 */}
-          <ScaleControl position="bottomright" imperial={false} />
-        </MapContainer>
+            {/* 축척 표시 */}
+            <ScaleControl position="bottomright" imperial={false} />
+          </MapContainer>
+        )}
       </div>
 
       {/* 사이드 패널 */}
